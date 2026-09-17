@@ -177,5 +177,106 @@ interface tvip_axi_if (
   always @(monitor_cb) begin
     ->at_monitor_cb_edge;
   end
+
+// Handshake Properties
+ap_wvalid_hold:
+assert property (@(posedge aclk) disable iff (!areset_n)
+  wvalid && !wready |=> wvalid s_until_with wready
+);
+
+ap_wready_eventually:
+assert property (@(posedge aclk) disable iff (!areset_n)
+  wvalid |=> s_eventually(wready)
+);
+
+cp_w_handshake:
+cover property (@(posedge aclk) disable iff (!areset_n)
+  wvalid && wready
+);
+
+ap_bvalid_hold:
+assert property (@(posedge aclk) disable iff (!areset_n)
+  bvalid && !bready |=> bvalid s_until_with bready
+);
+
+// Backpressure Stability Properties
+ap_wdata_stable:
+assert property (@(posedge aclk) disable iff (!areset_n)
+  wvalid && !wready |=> $stable({wdata, wstrb, wlast})
+);
+
+ap_aw_stable:
+assert property (@(posedge aclk) disable iff (!areset_n)
+  awvalid && !awready |=> $stable({awid, awaddr, awlen})
+);
+
+ap_bid_stable:
+assert property (@(posedge aclk) disable iff (!areset_n)
+  bvalid && !bready |=> $stable(bid)
+);
+
+cp_w_backpressure_multi:
+cover property (@(posedge aclk) disable iff (!areset_n)
+  (wvalid && !wready)[*2:$] ##1 wready
+);
+
+
+// Burst Properties
+ap_burst_4kb_boundary:
+assert property (@(posedge aclk) disable iff (!areset_n)
+  awvalid && awready && awburst == 2'b01 |->
+    ({1'b0, awaddr[11:0]} +
+     (({1'b0, awlen} + 1'b1) << awsize)) <= 13'd4096
+);
+
+ap_wrap_len_legal:
+assert property (@(posedge aclk) disable iff (!areset_n)
+  awvalid && awburst == 2'b10 |->
+    awlen inside {1, 3, 7, 15}
+);
+
+ap_awburst_legal:
+assert property (@(posedge aclk) disable iff (!areset_n)
+  awvalid |-> awburst != 2'b11
+);
+
+ap_wrap_addr_aligned:
+assert property (@(posedge aclk) disable iff (!areset_n)
+  awvalid && awburst == 2'b10 |-> (awaddr % (1 << awsize)) == 0
+);
+
+ap_fixed_len_legal:
+assert property (@(posedge aclk) disable iff (!areset_n)
+  awvalid && awburst == 2'b00 |->
+    awlen <= 15
+);
+
+// reset behaviors
+ap_valid_low_during_reset:
+assert property (@(posedge aclk)
+  !areset_n |-> !awvalid && !wvalid && !arvalid
+);
+
+ap_response_valid_low_during_reset:
+assert property (@(posedge aclk)
+  !areset_n |-> !bvalid && !rvalid
+);
+
+cp_reset_recovery:
+cover property (@(posedge aclk)
+  $rose(areset_n) ##[1:$] (awvalid && awready)
+);
+
+// X-Value Properties
+ap_bresp_no_x:
+assert property (@(posedge aclk) disable iff (!areset_n)
+  bvalid |-> !$isunknown({bid, bresp})
+);
+
+ap_rresp_no_x:
+assert property (@(posedge aclk) disable iff (!areset_n)
+  rvalid |-> !$isunknown({rid, rdata, rresp, rlast})
+);
+
 endinterface
 `endif
